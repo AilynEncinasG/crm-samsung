@@ -3,25 +3,69 @@ services:
     build:
       context: ./backend
     container_name: crm_samsung_backend
+    command: python manage.py runserver 0.0.0.0:8000
+    volumes:
+      - ./backend:/app
     env_file:
       - ./backend/.env
     ports:
       - "8000:8000"
-    volumes:
-      - ./backend:/app
-    command: python manage.py runserver 0.0.0.0:8000
+    networks:
+      - crm_samsung_network
 
   frontend:
     build:
       context: ./frontend
     container_name: crm_samsung_frontend
+    command: npm run dev -- --host 0.0.0.0
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
     env_file:
       - ./frontend/.env
     ports:
       - "5173:5173"
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
     depends_on:
       - backend
-    command: npm run dev -- --host 0.0.0.0
+    networks:
+      - crm_samsung_network
+
+  postgres_odoo:
+    image: postgres:16
+    container_name: crm_samsung_postgres_odoo
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: odoo
+      POSTGRES_PASSWORD: odoo
+    volumes:
+      - odoo_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - crm_samsung_network
+
+  odoo:
+    image: odoo:18.0
+    container_name: crm_samsung_odoo
+    depends_on:
+      - postgres_odoo
+    ports:
+      - "8069:8069"
+    environment:
+      HOST: postgres_odoo
+      USER: odoo
+      PASSWORD: odoo
+    volumes:
+      - odoo_web_data:/var/lib/odoo
+      - ./odoo/config:/etc/odoo
+      - ./odoo/addons:/mnt/extra-addons
+    networks:
+      - crm_samsung_network
+
+volumes:
+  odoo_db_data:
+  odoo_web_data:
+
+networks:
+  crm_samsung_network:
+    driver: bridge
