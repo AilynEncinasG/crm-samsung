@@ -18,6 +18,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'apps.core',
     'apps.dw',
+    'apps.integraciones',
 ]
 
 MIDDLEWARE = [

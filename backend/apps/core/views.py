@@ -14,7 +14,7 @@ from .serializers import (
     RepartidorSerializer, ClienteSerializer, PedidoSerializer, DetallePedidoSerializer,
     ProveedorSerializer, OrdenCompraSerializer, DetalleCompraSerializer, AuditoriaSerializer
 )
-
+from apps.integraciones.services.odoo_client import OdooClient
 
 class TiendaViewSet(viewsets.ModelViewSet):
     queryset = Tienda.objects.all()
@@ -921,3 +921,16 @@ def detalle_pedido_completo(request, pedido_id):
 
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+def odoo_estado(request):
+    try:
+        client = OdooClient()
+        estado = client.estado()
+        return Response(estado)
+
+    except Exception as e:
+        return Response({
+            'conectado': False,
+            'error': str(e)
+        }, status=500)
