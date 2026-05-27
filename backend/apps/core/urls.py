@@ -8,7 +8,7 @@ from .views import (
     ProveedorViewSet, OrdenCompraViewSet, DetalleCompraViewSet, AuditoriaViewSet,
     health, dashboard, dashboard_dw, registrar_venta, registrar_compra, reactivar_cliente, reactivar_producto, reactivar_proveedor, reactivar_repartidor,
     actualizar_estado_pedido, detalle_pedido_completo, odoo_estado,
-    sincronizar_cliente_odoo, sincronizar_clientes_odoo
+    sincronizar_cliente_odoo, sincronizar_clientes_odoo, sincronizar_producto_odoo, sincronizar_productos_odoo
 )
 
 router = DefaultRouter()
@@ -47,5 +47,7 @@ urlpatterns = [
     path('pedidos/<int:pedido_id>/detalle-completo/', detalle_pedido_completo),
     path('odoo/estado/', odoo_estado),
     path('odoo/clientes/sincronizar/', sincronizar_clientes_odoo),
-path('odoo/clientes/<int:cliente_id>/sincronizar/', sincronizar_cliente_odoo),
+    path('odoo/clientes/<int:cliente_id>/sincronizar/', sincronizar_cliente_odoo),
+    path('odoo/productos/sincronizar/', sincronizar_productos_odoo),
+    path('odoo/productos/<int:producto_id>/sincronizar/', sincronizar_producto_odoo),
 ]

@@ -1061,3 +1061,107 @@ def sincronizar_clientes_odoo(request):
         'errores': errores,
     })
 
+@api_view(['POST'])
+def sincronizar_producto_odoo(request, producto_id):
+    try:
+        producto = Producto.objects.get(id=producto_id)
+
+        if not producto.activo:
+            return Response(
+                {'error': 'No se puede sincronizar un producto inactivo.'},
+                status=400
+            )
+
+        client = OdooClient()
+        resultado = client.crear_o_actualizar_producto(producto)
+
+        producto.odoo_template_id = resultado['template_id']
+        producto.odoo_product_id = resultado['product_id']
+        producto.odoo_sync_status = resultado['accion']
+        producto.odoo_last_sync = timezone.now()
+        producto.save()
+
+        registrar_log_odoo(
+            'SINCRONIZAR_PRODUCTO',
+            'Producto',
+            producto.id,
+            'OK',
+            f"Producto sincronizado con Odoo. Template ID: {resultado['template_id']}. Product ID: {resultado['product_id']}. Acción: {resultado['accion']}"
+        )
+
+        return Response({
+            'mensaje': 'Producto sincronizado correctamente con Odoo',
+            'producto_id': producto.id,
+            'odoo_template_id': producto.odoo_template_id,
+            'odoo_product_id': producto.odoo_product_id,
+            'accion': resultado['accion'],
+        })
+
+    except Producto.DoesNotExist:
+        return Response(
+            {'error': 'Producto no encontrado.'},
+            status=404
+        )
+
+    except Exception as e:
+        registrar_log_odoo(
+            'SINCRONIZAR_PRODUCTO',
+            'Producto',
+            producto_id,
+            'ERROR',
+            str(e)
+        )
+
+        return Response(
+            {'error': str(e)},
+            status=500
+        )
+
+
+@api_view(['POST'])
+def sincronizar_productos_odoo(request):
+    productos = Producto.objects.filter(activo=True).order_by('id')
+
+    total = 0
+    errores = []
+
+    for producto in productos:
+        try:
+            client = OdooClient()
+            resultado = client.crear_o_actualizar_producto(producto)
+
+            producto.odoo_template_id = resultado['template_id']
+            producto.odoo_product_id = resultado['product_id']
+            producto.odoo_sync_status = resultado['accion']
+            producto.odoo_last_sync = timezone.now()
+            producto.save()
+
+            registrar_log_odoo(
+                'SINCRONIZAR_PRODUCTOS',
+                'Producto',
+                producto.id,
+                'OK',
+                f"Producto sincronizado con Odoo. Template ID: {resultado['template_id']}. Product ID: {resultado['product_id']}. Acción: {resultado['accion']}"
+            )
+
+            total += 1
+
+        except Exception as e:
+            errores.append({
+                'producto_id': producto.id,
+                'error': str(e)
+            })
+
+            registrar_log_odoo(
+                'SINCRONIZAR_PRODUCTOS',
+                'Producto',
+                producto.id,
+                'ERROR',
+                str(e)
+            )
+
+    return Response({
+        'mensaje': 'Sincronización de productos finalizada',
+        'productos_sincronizados': total,
+        'errores': errores,
+    })

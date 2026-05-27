@@ -131,6 +131,47 @@ export default function Productos() {
     }
   }
 
+  const sincronizarProductoOdoo = async (producto) => {
+    setMensaje('')
+    setError('')
+
+    try {
+      const res = await api.post(`/odoo/productos/${producto.id}/sincronizar/`)
+      setMensaje(
+        `Producto sincronizado con Odoo. Product ID: ${res.data.odoo_product_id}`
+      )
+      await cargarDatos()
+    } catch (err) {
+      const detalle =
+        err.response?.data?.error ||
+        'No se pudo sincronizar el producto con Odoo.'
+
+      setError(detalle)
+    }
+  }
+
+  const sincronizarTodosProductosOdoo = async () => {
+    setMensaje('')
+    setError('')
+    setCargando(true)
+
+    try {
+      const res = await api.post('/odoo/productos/sincronizar/')
+      setMensaje(
+        `Sincronización finalizada. Productos sincronizados: ${res.data.productos_sincronizados}`
+      )
+      await cargarDatos()
+    } catch (err) {
+      const detalle =
+        err.response?.data?.error ||
+        'No se pudo sincronizar productos con Odoo.'
+
+      setError(detalle)
+    } finally {
+      setCargando(false)
+    }
+  }
+
   return (
     <>
       <div className="page-header">
@@ -140,6 +181,9 @@ export default function Productos() {
         </div>
 
         <div className="header-actions">
+          <button onClick={sincronizarTodosProductosOdoo} disabled={cargando}>
+            Sincronizar productos Odoo
+          </button>
           <button onClick={() => setMostrarInactivos(!mostrarInactivos)}>
             {mostrarInactivos ? 'Ver solo activos' : 'Ver inactivos'}
           </button>
@@ -238,6 +282,7 @@ export default function Productos() {
               <th>Precio venta</th>
               <th>Gama</th>
               <th>Estado</th>
+              <th>Odoo</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -245,7 +290,7 @@ export default function Productos() {
           <tbody>
             {productos.length === 0 ? (
               <tr>
-                <td colSpan="7">No hay productos registrados.</td>
+                <td colSpan="8">No hay productos registrados.</td>
               </tr>
             ) : (
               productos.map((producto) => (
@@ -265,7 +310,25 @@ export default function Productos() {
                     )}
                   </td>
                   <td>
+                    {producto.odoo_product_id ? (
+                      <span className="badge success-badge">
+                        ID {producto.odoo_product_id}
+                      </span>
+                    ) : (
+                      <span className="badge warning">No sincronizado</span>
+                    )}
+                  </td>
+                  <td>
                     <div className="table-actions">
+                      {producto.activo && (
+                        <button
+                          type="button"
+                          className="small-button success-button"
+                          onClick={() => sincronizarProductoOdoo(producto)}
+                        >
+                          Odoo
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="small-button"

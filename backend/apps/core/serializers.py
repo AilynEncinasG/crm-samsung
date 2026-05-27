@@ -53,7 +53,19 @@ class ProductoSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Producto
-        fields = '__all__'
+        fields = [
+            'id',
+            'nombre',
+            'categoria',
+            'categoria_nombre',
+            'precio_venta_sugerido',
+            'gama',
+            'activo',
+            'odoo_template_id',
+            'odoo_product_id',
+            'odoo_sync_status',
+            'odoo_last_sync',
+        ]
 
 
 class StockAlmacenSerializer(serializers.ModelSerializer):

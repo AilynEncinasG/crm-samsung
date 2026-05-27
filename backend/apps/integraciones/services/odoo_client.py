@@ -162,3 +162,106 @@ class OdooClient:
             'partner_id': partner_id,
             'accion': 'creado'
         }
+    
+    def existe_product_template(self, template_id):
+        if not template_id:
+            return False
+
+        total = self.execute_kw(
+            'product.template',
+            'search_count',
+            [[['id', '=', template_id]]]
+        )
+
+        return total > 0
+
+    def buscar_product_template_por_codigo(self, codigo):
+        if not codigo:
+            return None
+
+        ids = self.execute_kw(
+            'product.template',
+            'search',
+            [[['default_code', '=', codigo]]],
+            {'limit': 1}
+        )
+
+        return ids[0] if ids else None
+
+    def obtener_producto_variante(self, template_id):
+        registros = self.execute_kw(
+            'product.template',
+            'read',
+            [[template_id]],
+            {'fields': ['product_variant_id']}
+        )
+
+        if not registros:
+            return None
+
+        variante = registros[0].get('product_variant_id')
+
+        if isinstance(variante, list) and variante:
+            return variante[0]
+
+        return None
+
+    def crear_o_actualizar_producto(self, producto):
+        codigo = f'CRM-PROD-{producto.id}'
+
+        vals = {
+            'name': producto.nombre,
+            'default_code': codigo,
+            'list_price': float(producto.precio_venta_sugerido or 0),
+            'sale_ok': True,
+            'purchase_ok': True,
+            'active': bool(producto.activo),
+        }
+
+        template_id = producto.odoo_template_id
+
+        if template_id and self.existe_product_template(template_id):
+            self.execute_kw(
+                'product.template',
+                'write',
+                [[template_id], vals]
+            )
+
+            product_id = self.obtener_producto_variante(template_id)
+
+            return {
+                'template_id': template_id,
+                'product_id': product_id,
+                'accion': 'actualizado'
+            }
+
+        template_id = self.buscar_product_template_por_codigo(codigo)
+
+        if template_id:
+            self.execute_kw(
+                'product.template',
+                'write',
+                [[template_id], vals]
+            )
+
+            product_id = self.obtener_producto_variante(template_id)
+
+            return {
+                'template_id': template_id,
+                'product_id': product_id,
+                'accion': 'vinculado_actualizado'
+            }
+
+        template_id = self.execute_kw(
+            'product.template',
+            'create',
+            [vals]
+        )
+
+        product_id = self.obtener_producto_variante(template_id)
+
+        return {
+            'template_id': template_id,
+            'product_id': product_id,
+            'accion': 'creado'
+        }

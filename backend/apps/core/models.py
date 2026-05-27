@@ -98,7 +98,11 @@ class Producto(models.Model):
     precio_venta_sugerido = models.DecimalField(db_column='PrecioVentaSugerido', max_digits=18, decimal_places=2)
     gama = models.CharField(db_column='Gama', max_length=50, blank=True, null=True)
     activo = models.BooleanField(db_column='Activo', default=True)
-    
+    odoo_template_id = models.IntegerField(db_column='OdooTemplateID', blank=True, null=True)
+    odoo_product_id = models.IntegerField(db_column='OdooProductID', blank=True, null=True)
+    odoo_sync_status = models.CharField(db_column='OdooSyncStatus', max_length=50, blank=True, null=True)
+    odoo_last_sync = models.DateTimeField(db_column='OdooLastSync', blank=True, null=True)
+
     class Meta:
         managed = False
         db_table = 'Producto'
