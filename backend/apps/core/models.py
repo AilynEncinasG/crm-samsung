@@ -175,6 +175,9 @@ class Cliente(models.Model):
     email = models.EmailField(db_column='Email', max_length=100, blank=True, null=True)
     segmento = models.CharField(db_column='Segmento', max_length=50, default='Nuevo')
     activo = models.BooleanField(db_column='Activo', default=True)
+    odoo_partner_id = models.IntegerField(db_column='OdooPartnerID', blank=True, null=True)
+    odoo_sync_status = models.CharField(db_column='OdooSyncStatus', max_length=50, blank=True, null=True)
+    odoo_last_sync = models.DateTimeField(db_column='OdooLastSync', blank=True, null=True)
 
     class Meta:
         managed = False

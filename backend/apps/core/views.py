@@ -15,6 +15,7 @@ from .serializers import (
     ProveedorSerializer, OrdenCompraSerializer, DetalleCompraSerializer, AuditoriaSerializer
 )
 from apps.integraciones.services.odoo_client import OdooClient
+from django.utils import timezone
 
 class TiendaViewSet(viewsets.ModelViewSet):
     queryset = Tienda.objects.all()
@@ -934,3 +935,129 @@ def odoo_estado(request):
             'conectado': False,
             'error': str(e)
         }, status=500)
+
+def registrar_log_odoo(tipo_operacion, entidad, registro_id, estado, mensaje):
+    try:
+        with connections['default'].cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO IntegracionOdooLog (
+                    TipoOperacion,
+                    Entidad,
+                    RegistroID,
+                    Estado,
+                    Mensaje
+                )
+                VALUES (%s, %s, %s, %s, %s)
+            """, [
+                tipo_operacion,
+                entidad,
+                registro_id,
+                estado,
+                mensaje,
+            ])
+    except Exception:
+        pass
+
+
+@api_view(['POST'])
+def sincronizar_cliente_odoo(request, cliente_id):
+    try:
+        cliente = Cliente.objects.get(id=cliente_id)
+
+        if not cliente.activo:
+            return Response(
+                {'error': 'No se puede sincronizar un cliente inactivo.'},
+                status=400
+            )
+
+        client = OdooClient()
+        resultado = client.crear_o_actualizar_cliente(cliente)
+
+        cliente.odoo_partner_id = resultado['partner_id']
+        cliente.odoo_sync_status = resultado['accion']
+        cliente.odoo_last_sync = timezone.now()
+        cliente.save()
+
+        registrar_log_odoo(
+            'SINCRONIZAR_CLIENTE',
+            'Cliente',
+            cliente.id,
+            'OK',
+            f"Cliente sincronizado con Odoo. Partner ID: {resultado['partner_id']}. Acción: {resultado['accion']}"
+        )
+
+        return Response({
+            'mensaje': 'Cliente sincronizado correctamente con Odoo',
+            'cliente_id': cliente.id,
+            'odoo_partner_id': cliente.odoo_partner_id,
+            'accion': resultado['accion'],
+        })
+
+    except Cliente.DoesNotExist:
+        return Response(
+            {'error': 'Cliente no encontrado.'},
+            status=404
+        )
+
+    except Exception as e:
+        registrar_log_odoo(
+            'SINCRONIZAR_CLIENTE',
+            'Cliente',
+            cliente_id,
+            'ERROR',
+            str(e)
+        )
+
+        return Response(
+            {'error': str(e)},
+            status=500
+        )
+
+
+@api_view(['POST'])
+def sincronizar_clientes_odoo(request):
+    clientes = Cliente.objects.filter(activo=True).order_by('id')
+
+    total = 0
+    errores = []
+
+    for cliente in clientes:
+        try:
+            client = OdooClient()
+            resultado = client.crear_o_actualizar_cliente(cliente)
+
+            cliente.odoo_partner_id = resultado['partner_id']
+            cliente.odoo_sync_status = resultado['accion']
+            cliente.odoo_last_sync = timezone.now()
+            cliente.save()
+
+            registrar_log_odoo(
+                'SINCRONIZAR_CLIENTES',
+                'Cliente',
+                cliente.id,
+                'OK',
+                f"Cliente sincronizado con Odoo. Partner ID: {resultado['partner_id']}. Acción: {resultado['accion']}"
+            )
+
+            total += 1
+
+        except Exception as e:
+            errores.append({
+                'cliente_id': cliente.id,
+                'error': str(e)
+            })
+
+            registrar_log_odoo(
+                'SINCRONIZAR_CLIENTES',
+                'Cliente',
+                cliente.id,
+                'ERROR',
+                str(e)
+            )
+
+    return Response({
+        'mensaje': 'Sincronización de clientes finalizada',
+        'clientes_sincronizados': total,
+        'errores': errores,
+    })
+

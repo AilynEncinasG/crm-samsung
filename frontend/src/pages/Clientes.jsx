@@ -123,9 +123,53 @@ export default function Clientes() {
     }
   }
 
+  const sincronizarClienteOdoo = async (cliente) => {
+    setMensaje('')
+    setError('')
+
+    try {
+      const res = await api.post(`/odoo/clientes/${cliente.id}/sincronizar/`)
+      setMensaje(
+        `Cliente sincronizado con Odoo. Partner ID: ${res.data.odoo_partner_id}`
+      )
+      await cargarClientes()
+    } catch (err) {
+      const detalle =
+        err.response?.data?.error ||
+        'No se pudo sincronizar el cliente con Odoo.'
+
+      setError(detalle)
+    }
+  }
+
+  const sincronizarTodosClientesOdoo = async () => {
+    setMensaje('')
+    setError('')
+    setCargando(true)
+
+    try {
+      const res = await api.post('/odoo/clientes/sincronizar/')
+      setMensaje(
+        `Sincronización finalizada. Clientes sincronizados: ${res.data.clientes_sincronizados}`
+      )
+      await cargarClientes()
+    } catch (err) {
+      const detalle =
+        err.response?.data?.error ||
+        'No se pudo sincronizar clientes con Odoo.'
+
+      setError(detalle)
+    } finally {
+      setCargando(false)
+    }
+  }
   return (
     <>
       <div className="header-actions">
+        <button onClick={sincronizarTodosClientesOdoo} disabled={cargando}>
+          Sincronizar clientes Odoo
+        </button>
+
         <button onClick={() => setMostrarInactivos(!mostrarInactivos)}>
           {mostrarInactivos ? 'Ver solo activos' : 'Ver inactivos'}
         </button>
@@ -216,6 +260,7 @@ export default function Clientes() {
               <th>Email</th>
               <th>Segmento</th>
               <th>Estado</th>
+              <th>Odoo</th>
               <th>Acciones</th>
             </tr>
           </thead>
@@ -223,7 +268,7 @@ export default function Clientes() {
           <tbody>
             {clientes.length === 0 ? (
               <tr>
-                <td colSpan="6">No hay clientes registrados.</td>
+                <td colSpan="7">No hay clientes registrados.</td>
               </tr>
             ) : (
               clientes.map((cliente) => (
@@ -244,7 +289,25 @@ export default function Clientes() {
                     )}
                   </td>
                   <td>
+                    {cliente.odoo_partner_id ? (
+                      <span className="badge success-badge">
+                        ID {cliente.odoo_partner_id}
+                      </span>
+                    ) : (
+                      <span className="badge warning">No sincronizado</span>
+                    )}
+                  </td>
+                  <td>
                     <div className="table-actions">
+                      {cliente.activo && (
+                        <button
+                          type="button"
+                          className="small-button success-button"
+                          onClick={() => sincronizarClienteOdoo(cliente)}
+                        >
+                          Odoo
+                        </button>
+                      )}
                       <button
                         type="button"
                         className="small-button"
@@ -252,7 +315,7 @@ export default function Clientes() {
                       >
                         Editar
                       </button>
-
+                      
                       {cliente.activo ? (
                         <button
                           type="button"

@@ -93,7 +93,17 @@ class RepartidorSerializer(serializers.ModelSerializer):
 class ClienteSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cliente
-        fields = '__all__'
+        fields = [
+            'id',
+            'nombre',
+            'apellidos',
+            'email',
+            'segmento',
+            'activo',
+            'odoo_partner_id',
+            'odoo_sync_status',
+            'odoo_last_sync',
+        ]
 
 
 class PedidoSerializer(serializers.ModelSerializer):
