@@ -8,6 +8,7 @@ import Compras from './pages/Compras.jsx'
 import Proveedores from './pages/Proveedores.jsx'
 import Repartidores from './pages/Repartidores.jsx'
 import ReportesDW from './pages/ReportesDW.jsx'
+import IntegracionOdoo from './pages/IntegracionOdoo.jsx'
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
         <NavLink to="/proveedores">Proveedores</NavLink>
         <NavLink to="/repartidores">Repartidores</NavLink>
         <NavLink to="/reportes-dw">Reportes DW</NavLink>
+        <NavLink to="/integracion-odoo">Integración Odoo</NavLink>
       </aside>
       <main className="content">
         <Routes>
@@ -35,6 +37,7 @@ export default function App() {
           <Route path="/proveedores" element={<Proveedores />} />
           <Route path="/repartidores" element={<Repartidores />} />
           <Route path="/reportes-dw" element={<ReportesDW />} />
+          <Route path="/integracion-odoo" element={<IntegracionOdoo />} />
         </Routes>
       </main>
     </div>

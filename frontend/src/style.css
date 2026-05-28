@@ -230,3 +230,10 @@ button { background: #2563eb; color: white; border: none; cursor: pointer; }
   gap: 10px 20px;
   margin-bottom: 20px;
 }
+
+.odoo-status {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}

@@ -1317,3 +1317,102 @@ def stock_list(request):
 
     except Exception as e:
         return Response({'error': str(e)}, status=500)
+
+@api_view(['GET'])
+def odoo_resumen(request):
+    try:
+        client = OdooClient()
+        estado_odoo = client.estado()
+
+        def fetch_one(sql, params=None):
+            with connections['default'].cursor() as cursor:
+                cursor.execute(sql, params or [])
+                row = cursor.fetchone()
+                return row[0] if row else 0
+
+        def fetch_all(sql, params=None):
+            with connections['default'].cursor() as cursor:
+                cursor.execute(sql, params or [])
+                columns = [col[0] for col in cursor.description]
+                return [
+                    dict(zip(columns, row))
+                    for row in cursor.fetchall()
+                ]
+
+        kpis = {
+            'odoo_conectado': estado_odoo.get('conectado', False),
+            'odoo_usuarios_activos': estado_odoo.get('usuarios_activos', 0),
+            'odoo_contactos_activos': estado_odoo.get('contactos_activos', 0),
+            'odoo_productos_activos': estado_odoo.get('productos_activos', 0),
+
+            'clientes_sincronizados': fetch_one("""
+                SELECT COUNT(*) 
+                FROM Cliente 
+                WHERE OdooPartnerID IS NOT NULL
+            """),
+
+            'productos_sincronizados': fetch_one("""
+                SELECT COUNT(*) 
+                FROM Producto 
+                WHERE OdooProductID IS NOT NULL
+            """),
+
+            'pedidos_facturados': fetch_one("""
+                SELECT COUNT(*) 
+                FROM Pedido 
+                WHERE OdooInvoiceID IS NOT NULL
+            """),
+
+            'pedidos_pendientes_factura': fetch_one("""
+                SELECT COUNT(*) 
+                FROM Pedido 
+                WHERE OdooInvoiceID IS NULL
+            """),
+
+            'errores_integracion': fetch_one("""
+                SELECT COUNT(*) 
+                FROM IntegracionOdooLog 
+                WHERE Estado = 'ERROR'
+            """),
+        }
+
+        ultimos_logs = fetch_all("""
+            SELECT TOP 10
+                ID AS id,
+                TipoOperacion AS tipo_operacion,
+                Entidad AS entidad,
+                RegistroID AS registro_id,
+                Estado AS estado,
+                Mensaje AS mensaje,
+                CONVERT(VARCHAR(19), Fecha, 120) AS fecha
+            FROM IntegracionOdooLog
+            ORDER BY ID DESC
+        """)
+
+        ultimas_facturas = fetch_all("""
+            SELECT TOP 10
+                P.ID AS pedido_id,
+                CONCAT(C.Nombre, ' ', ISNULL(C.Apellidos, '')) AS cliente,
+                P.Total AS total,
+                P.OdooInvoiceID AS odoo_invoice_id,
+                P.OdooInvoiceName AS odoo_invoice_name,
+                P.EstadoFacturaOdoo AS estado_factura_odoo,
+                P.OdooInvoiceURL AS odoo_invoice_url,
+                CONVERT(VARCHAR(19), P.OdooLastSync, 120) AS fecha_sync
+            FROM Pedido P
+            INNER JOIN Cliente C ON C.ID = P.ClienteID
+            WHERE P.OdooInvoiceID IS NOT NULL
+            ORDER BY P.OdooLastSync DESC
+        """)
+
+        return Response({
+            'kpis': kpis,
+            'version_odoo': estado_odoo.get('version', {}),
+            'ultimos_logs': ultimos_logs,
+            'ultimas_facturas': ultimas_facturas,
+        })
+
+    except Exception as e:
+        return Response({
+            'error': str(e)
+        }, status=500)
