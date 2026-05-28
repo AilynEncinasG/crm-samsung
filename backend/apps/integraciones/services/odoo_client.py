@@ -1,7 +1,6 @@
 import xmlrpc.client
 from decouple import config
 
-
 class OdooClient:
     def __init__(self):
         self.url = config('ODOO_URL')
@@ -264,4 +263,97 @@ class OdooClient:
             'template_id': template_id,
             'product_id': product_id,
             'accion': 'creado'
+        }
+    
+    def obtener_url_factura(self, invoice_id):
+        public_url = config('ODOO_PUBLIC_URL', default='http://localhost:8069')
+        return f'{public_url}/web#id={invoice_id}&model=account.move&view_type=form'
+
+    def obtener_cuenta_ingreso(self):
+        cuentas = self.execute_kw(
+            'account.account',
+            'search',
+            [[['account_type', 'in', ['income', 'income_other']]]],
+            {'limit': 1}
+        )
+
+        if not cuentas:
+            raise Exception(
+                'No existe una cuenta de ingresos en Odoo. Configura Facturación/Contabilidad y el plan contable.'
+            )
+
+        return cuentas[0]
+
+    def obtener_diario_ventas(self):
+        diarios = self.execute_kw(
+            'account.journal',
+            'search',
+            [[['type', '=', 'sale']]],
+            {'limit': 1}
+        )
+
+        if not diarios:
+            raise Exception(
+                'No existe un diario de ventas en Odoo. Instala o configura Facturación.'
+            )
+
+        return diarios[0]
+
+    def crear_factura_cliente(self, partner_id, lineas, pedido_id):
+        if not partner_id:
+            raise Exception('No se recibió partner_id para la factura.')
+
+        if not lineas:
+            raise Exception('La factura no tiene líneas.')
+
+        journal_id = self.obtener_diario_ventas()
+        account_id = self.obtener_cuenta_ingreso()
+
+        invoice_lines = []
+
+        for linea in lineas:
+            product_id = linea.get('product_id')
+            nombre = linea.get('nombre')
+            cantidad = linea.get('cantidad')
+            precio_unitario = linea.get('precio_unitario')
+
+            invoice_lines.append((0, 0, {
+                'product_id': product_id,
+                'name': nombre,
+                'quantity': float(cantidad),
+                'price_unit': float(precio_unitario),
+                'account_id': account_id,
+            }))
+
+        vals = {
+            'move_type': 'out_invoice',
+            'partner_id': partner_id,
+            'journal_id': journal_id,
+            'invoice_origin': f'CRM Pedido #{pedido_id}',
+            'ref': f'CRM-PEDIDO-{pedido_id}',
+            'invoice_line_ids': invoice_lines,
+        }
+
+        invoice_id = self.execute_kw(
+            'account.move',
+            'create',
+            [vals]
+        )
+
+        factura = self.execute_kw(
+            'account.move',
+            'read',
+            [[invoice_id]],
+            {'fields': ['name', 'state', 'payment_state']}
+        )[0]
+
+        nombre_factura = factura.get('name') or f'BORRADOR-{invoice_id}'
+        estado = factura.get('state') or 'draft'
+
+        return {
+            'invoice_id': invoice_id,
+            'invoice_name': nombre_factura,
+            'estado': estado,
+            'payment_state': factura.get('payment_state'),
+            'url': self.obtener_url_factura(invoice_id),
         }

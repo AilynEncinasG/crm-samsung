@@ -151,6 +151,25 @@ export default function Ventas() {
     setMostrandoDetalle(false)
   }
 
+  const generarFacturaOdoo = async (pedidoId) => {
+    setMensaje('')
+    setError('')
+
+    try {
+      const res = await api.post(`/odoo/pedidos/${pedidoId}/facturar/`)
+      setMensaje(
+        `Factura Odoo creada: ${res.data.odoo_invoice_name} - ID ${res.data.odoo_invoice_id}`
+      )
+      await cargarDatos()
+    } catch (err) {
+      const detalle =
+        err.response?.data?.error ||
+        'No se pudo generar la factura en Odoo.'
+
+      setError(detalle)
+    }
+  }
+
   return (
     <>
       <h1>Ventas / Pedidos</h1>
@@ -299,13 +318,14 @@ export default function Ventas() {
               <th>Fecha</th>
               <th>Total</th>
               <th>Estado</th>
+              <th>Factura Odoo</th>
               <th>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {pedidos.length === 0 ? (
               <tr>
-                <td colSpan="6">No hay pedidos registrados.</td>
+                <td colSpan="7">No hay pedidos registrados.</td>
               </tr>
             ) : (
               pedidos.map((pedido) => (
@@ -329,6 +349,20 @@ export default function Ventas() {
                     </select>
                   </td>
                   <td>
+                    {pedido.odoo_invoice_id ? (
+                      <a
+                        href={pedido.odoo_invoice_url || `http://localhost:8069/web#id=${pedido.odoo_invoice_id}&model=account.move&view_type=form`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="badge success-badge"
+                      >
+                        {pedido.odoo_invoice_name || `Factura ${pedido.odoo_invoice_id}`}
+                      </a>
+                    ) : (
+                      <span className="badge warning">Pendiente</span>
+                    )}
+                  </td>
+                  <td>
                     <button
                       type="button"
                       className="small-button"
@@ -336,6 +370,15 @@ export default function Ventas() {
                     >
                       Ver detalle
                     </button>
+                    {!pedido.odoo_invoice_id && (
+                      <button
+                        type="button"
+                        className="small-button success-button"
+                        onClick={() => generarFacturaOdoo(pedido.id)}
+                      >
+                        Facturar Odoo
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))

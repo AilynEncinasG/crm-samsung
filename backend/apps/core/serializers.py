@@ -119,11 +119,50 @@ class ClienteSerializer(serializers.ModelSerializer):
 
 
 class PedidoSerializer(serializers.ModelSerializer):
-    cliente_nombre = serializers.CharField(source='cliente.nombre', read_only=True)
+    cliente_nombre = serializers.SerializerMethodField()
+    almacen_nombre = serializers.SerializerMethodField()
+    repartidor_nombre = serializers.SerializerMethodField()
 
     class Meta:
         model = Pedido
-        fields = '__all__'
+        fields = [
+            'id',
+            'cliente',
+            'cliente_nombre',
+            'empleado',
+            'almacen_origen',
+            'almacen_nombre',
+            'repartidor',
+            'repartidor_nombre',
+            'fecha_pedido',
+            'fecha_entrega_real',
+            'metodo_envio',
+            'total',
+            'estado',
+            'satisfaccion_cliente',
+            'error_en_orden',
+            'odoo_invoice_id',
+            'odoo_invoice_name',
+            'estado_factura_odoo',
+            'odoo_invoice_url',
+            'odoo_last_sync',
+        ]
+
+    def get_cliente_nombre(self, obj):
+        if obj.cliente:
+            apellidos = obj.cliente.apellidos or ''
+            return f'{obj.cliente.nombre} {apellidos}'.strip()
+        return ''
+
+    def get_almacen_nombre(self, obj):
+        if obj.almacen_origen:
+            return obj.almacen_origen.nombre_almacen
+        return ''
+
+    def get_repartidor_nombre(self, obj):
+        if obj.repartidor:
+            return obj.repartidor.nombre_completo
+        return ''
 
 
 class DetallePedidoSerializer(serializers.ModelSerializer):

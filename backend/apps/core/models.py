@@ -110,18 +110,20 @@ class Producto(models.Model):
     def __str__(self):
         return self.nombre
 
-
 class StockAlmacen(models.Model):
     almacen = models.ForeignKey(
         Almacen,
         db_column='AlmacenID',
-        on_delete=models.DO_NOTHING
+        on_delete=models.DO_NOTHING,
+        primary_key=True
     )
+
     producto = models.ForeignKey(
         Producto,
         db_column='ProductoID',
         on_delete=models.DO_NOTHING
     )
+
     stock_total = models.IntegerField(db_column='StockTotal', blank=True, null=True)
 
     class Meta:
@@ -204,6 +206,11 @@ class Pedido(models.Model):
     estado = models.CharField(db_column='Estado', max_length=50, blank=True, null=True)
     satisfaccion_cliente = models.IntegerField(db_column='SatisfaccionCliente', blank=True, null=True)
     error_en_orden = models.BooleanField(db_column='ErrorEnOrden', default=False)
+    odoo_invoice_id = models.IntegerField(db_column='OdooInvoiceID', blank=True, null=True)
+    odoo_invoice_name = models.CharField(db_column='OdooInvoiceName', max_length=100, blank=True, null=True)
+    estado_factura_odoo = models.CharField(db_column='EstadoFacturaOdoo', max_length=50, blank=True, null=True)
+    odoo_invoice_url = models.CharField(db_column='OdooInvoiceURL', max_length=500, blank=True, null=True)
+    odoo_last_sync = models.DateTimeField(db_column='OdooLastSync', blank=True, null=True)
 
     class Meta:
         managed = False

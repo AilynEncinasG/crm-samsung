@@ -16,6 +16,8 @@ from .serializers import (
 )
 from apps.integraciones.services.odoo_client import OdooClient
 from django.utils import timezone
+from django.utils import timezone
+from apps.integraciones.services.odoo_client import OdooClient
 
 class TiendaViewSet(viewsets.ModelViewSet):
     queryset = Tienda.objects.all()
@@ -1165,3 +1167,153 @@ def sincronizar_productos_odoo(request):
         'productos_sincronizados': total,
         'errores': errores,
     })
+
+@api_view(['POST'])
+def facturar_pedido_odoo(request, pedido_id):
+    try:
+        pedido = Pedido.objects.get(id=pedido_id)
+
+        if pedido.odoo_invoice_id:
+            return Response({
+                'mensaje': 'El pedido ya tiene factura en Odoo',
+                'pedido_id': pedido.id,
+                'odoo_invoice_id': pedido.odoo_invoice_id,
+                'odoo_invoice_name': pedido.odoo_invoice_name,
+                'estado_factura_odoo': pedido.estado_factura_odoo,
+                'odoo_invoice_url': pedido.odoo_invoice_url,
+            })
+
+        cliente = pedido.cliente
+
+        if not cliente.activo:
+            return Response(
+                {'error': 'No se puede facturar un pedido de cliente inactivo.'},
+                status=400
+            )
+
+        client = OdooClient()
+
+        # Sincronizar cliente si todavía no existe en Odoo
+        resultado_cliente = client.crear_o_actualizar_cliente(cliente)
+        cliente.odoo_partner_id = resultado_cliente['partner_id']
+        cliente.odoo_sync_status = resultado_cliente['accion']
+        cliente.odoo_last_sync = timezone.now()
+        cliente.save()
+
+        detalles = DetallePedido.objects.filter(pedido=pedido).select_related('producto')
+
+        if not detalles.exists():
+            return Response(
+                {'error': 'El pedido no tiene detalle de productos.'},
+                status=400
+            )
+
+        lineas_odoo = []
+
+        for detalle in detalles:
+            producto = detalle.producto
+
+            if not producto.activo:
+                return Response(
+                    {'error': f'El producto {producto.nombre} está inactivo y no puede facturarse.'},
+                    status=400
+                )
+
+            # Sincronizar producto si todavía no existe en Odoo
+            resultado_producto = client.crear_o_actualizar_producto(producto)
+            producto.odoo_template_id = resultado_producto['template_id']
+            producto.odoo_product_id = resultado_producto['product_id']
+            producto.odoo_sync_status = resultado_producto['accion']
+            producto.odoo_last_sync = timezone.now()
+            producto.save()
+
+            if not producto.odoo_product_id:
+                return Response(
+                    {'error': f'No se pudo obtener el Product ID de Odoo para {producto.nombre}.'},
+                    status=500
+                )
+
+            lineas_odoo.append({
+                'product_id': producto.odoo_product_id,
+                'nombre': producto.nombre,
+                'cantidad': detalle.cantidad,
+                'precio_unitario': detalle.precio_unitario_venta,
+            })
+
+        resultado_factura = client.crear_factura_cliente(
+            partner_id=cliente.odoo_partner_id,
+            lineas=lineas_odoo,
+            pedido_id=pedido.id,
+        )
+
+        pedido.odoo_invoice_id = resultado_factura['invoice_id']
+        pedido.odoo_invoice_name = resultado_factura['invoice_name']
+        pedido.estado_factura_odoo = resultado_factura['estado']
+        pedido.odoo_invoice_url = resultado_factura['url']
+        pedido.odoo_last_sync = timezone.now()
+        pedido.save()
+
+        registrar_log_odoo(
+            'FACTURAR_PEDIDO',
+            'Pedido',
+            pedido.id,
+            'OK',
+            f"Factura creada en Odoo. Invoice ID: {pedido.odoo_invoice_id}. Factura: {pedido.odoo_invoice_name}"
+        )
+
+        return Response({
+            'mensaje': 'Factura creada correctamente en Odoo',
+            'pedido_id': pedido.id,
+            'odoo_invoice_id': pedido.odoo_invoice_id,
+            'odoo_invoice_name': pedido.odoo_invoice_name,
+            'estado_factura_odoo': pedido.estado_factura_odoo,
+            'odoo_invoice_url': pedido.odoo_invoice_url,
+        }, status=201)
+
+    except Pedido.DoesNotExist:
+        return Response(
+            {'error': 'Pedido no encontrado.'},
+            status=404
+        )
+
+    except Exception as e:
+        registrar_log_odoo(
+            'FACTURAR_PEDIDO',
+            'Pedido',
+            pedido_id,
+            'ERROR',
+            str(e)
+        )
+
+        return Response(
+            {'error': str(e)},
+            status=500
+        )
+
+@api_view(['GET'])
+def stock_list(request):
+    try:
+        with connections['default'].cursor() as cursor:
+            cursor.execute("""
+                SELECT
+                    SA.AlmacenID AS almacen,
+                    A.NombreAlmacen AS almacen_nombre,
+                    SA.ProductoID AS producto,
+                    P.Nombre AS producto_nombre,
+                    SA.StockTotal AS stock_total
+                FROM StockAlmacen SA
+                INNER JOIN Almacen A ON A.ID = SA.AlmacenID
+                INNER JOIN Producto P ON P.ID = SA.ProductoID
+                ORDER BY A.NombreAlmacen, P.Nombre
+            """)
+
+            columns = [col[0] for col in cursor.description]
+            data = [
+                dict(zip(columns, row))
+                for row in cursor.fetchall()
+            ]
+
+            return Response(data)
+
+    except Exception as e:
+        return Response({'error': str(e)}, status=500)
