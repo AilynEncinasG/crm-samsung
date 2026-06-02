@@ -1,3 +1,4 @@
+# backend/apps/core/views.py
 from django.db import connection, connections, transaction
 from rest_framework import viewsets
 from rest_framework.decorators import api_view
@@ -16,8 +17,8 @@ from .serializers import (
 )
 from apps.integraciones.services.odoo_client import OdooClient
 from django.utils import timezone
-from django.utils import timezone
-from apps.integraciones.services.odoo_client import OdooClient
+from math import ceil
+from collections import defaultdict
 
 class TiendaViewSet(viewsets.ModelViewSet):
     queryset = Tienda.objects.all()
@@ -1416,3 +1417,208 @@ def odoo_resumen(request):
         return Response({
             'error': str(e)
         }, status=500)
+    
+def _obtener_valor(objeto, posibles_campos, valor_defecto=0):
+    """
+    Obtiene el primer atributo existente dentro de una lista de posibles nombres.
+    Esto ayuda a que el motor predictivo funcione aunque algunos campos tengan nombres distintos.
+    """
+    for campo in posibles_campos:
+        if hasattr(objeto, campo):
+            valor = getattr(objeto, campo)
+            return valor if valor is not None else valor_defecto
+    return valor_defecto
+
+
+def _a_numero(valor):
+    """
+    Convierte valores Decimal, None o strings numéricos a float.
+    """
+    try:
+        return float(valor or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _calcular_inteligencia_predictiva():
+    """
+    Motor predictivo inicial para estimar demanda comercial e inventario crítico.
+    Funciona con pocos datos reales usando reglas, promedios y comportamiento histórico.
+    """
+
+    hoy = timezone.now()
+    limite_30_dias = hoy - timezone.timedelta(days=30)
+    limite_15_dias = hoy - timezone.timedelta(days=15)
+    limite_30_a_15_dias = hoy - timezone.timedelta(days=30)
+
+    ventas_por_producto = defaultdict(float)
+    ventas_ultimos_30 = defaultdict(float)
+    ventas_ultimos_15 = defaultdict(float)
+    ventas_15_anteriores = defaultdict(float)
+    fechas_por_producto = defaultdict(list)
+
+    detalles = DetallePedido.objects.select_related("producto", "pedido").all()
+
+    for detalle in detalles:
+        producto_id = getattr(detalle, "producto_id", None)
+        if not producto_id:
+            continue
+
+        cantidad = _a_numero(_obtener_valor(detalle, ["cantidad", "cantidad_producto", "unidades"], 0))
+        pedido = getattr(detalle, "pedido", None)
+        fecha_pedido = getattr(pedido, "fecha_pedido", None) if pedido else None
+
+        ventas_por_producto[producto_id] += cantidad
+
+        if fecha_pedido:
+            fechas_por_producto[producto_id].append(fecha_pedido)
+
+            if fecha_pedido >= limite_30_dias:
+                ventas_ultimos_30[producto_id] += cantidad
+
+            if fecha_pedido >= limite_15_dias:
+                ventas_ultimos_15[producto_id] += cantidad
+
+            if limite_30_a_15_dias <= fecha_pedido < limite_15_dias:
+                ventas_15_anteriores[producto_id] += cantidad
+
+    stock_por_producto = defaultdict(float)
+
+    for stock in StockAlmacen.objects.all():
+        producto_id = getattr(stock, "producto_id", None)
+        if not producto_id:
+            continue
+
+        cantidad_stock = _a_numero(
+            _obtener_valor(
+                stock,
+                ["cantidad", "stock", "cantidad_disponible", "stock_actual"],
+                0
+            )
+        )
+
+        stock_por_producto[producto_id] += cantidad_stock
+
+    predicciones = []
+
+    for producto in Producto.objects.all():
+        producto_id = producto.id
+        nombre_producto = _obtener_valor(producto, ["nombre", "nombre_producto", "descripcion"], "Producto sin nombre")
+
+        total_vendido = ventas_por_producto.get(producto_id, 0)
+        stock_actual = stock_por_producto.get(producto_id, 0)
+
+        fechas = fechas_por_producto.get(producto_id, [])
+
+        if fechas:
+            fecha_min = min(fechas)
+            fecha_max = max(fechas)
+            dias_historial = max((fecha_max - fecha_min).days + 1, 1)
+            meses_historial = max(dias_historial / 30, 1)
+        else:
+            meses_historial = 1
+
+        demanda_30 = ventas_ultimos_30.get(producto_id, 0)
+
+        if demanda_30 > 0:
+            demanda_estimada = ceil(demanda_30)
+        elif total_vendido > 0:
+            demanda_estimada = ceil(total_vendido / meses_historial)
+        else:
+            demanda_estimada = 0
+
+        venta_reciente = ventas_ultimos_15.get(producto_id, 0)
+        venta_anterior = ventas_15_anteriores.get(producto_id, 0)
+
+        if venta_reciente > venta_anterior:
+            tendencia = "CRECIENTE"
+        elif venta_reciente < venta_anterior:
+            tendencia = "BAJA"
+        elif total_vendido > 0:
+            tendencia = "ESTABLE"
+        else:
+            tendencia = "SIN DATOS SUFICIENTES"
+
+        if demanda_estimada <= 0 and stock_actual > 0:
+            nivel_riesgo = "BAJO"
+        elif stock_actual <= 0 and demanda_estimada > 0:
+            nivel_riesgo = "ALTO"
+        elif demanda_estimada > 0:
+            cobertura = stock_actual / demanda_estimada
+
+            if cobertura <= 0.5:
+                nivel_riesgo = "ALTO"
+            elif cobertura <= 1:
+                nivel_riesgo = "MEDIO"
+            else:
+                nivel_riesgo = "BAJO"
+        else:
+            nivel_riesgo = "BAJO"
+
+        stock_objetivo = ceil(demanda_estimada * 1.2)
+        reposicion_sugerida = max(stock_objetivo - stock_actual, 0)
+
+        if nivel_riesgo == "ALTO":
+            recomendacion = "Reponer producto de forma prioritaria."
+        elif nivel_riesgo == "MEDIO":
+            recomendacion = "Monitorear producto y planificar reposición."
+        else:
+            recomendacion = "Mantener seguimiento regular del producto."
+
+        predicciones.append({
+            "producto_id": producto_id,
+            "producto": nombre_producto,
+            "stock_actual": int(stock_actual),
+            "demanda_estimada": int(demanda_estimada),
+            "nivel_riesgo": nivel_riesgo,
+            "tendencia": tendencia,
+            "reposicion_sugerida": int(reposicion_sugerida),
+            "recomendacion": recomendacion,
+        })
+
+    orden_riesgo = {"ALTO": 1, "MEDIO": 2, "BAJO": 3}
+
+    predicciones = sorted(
+        predicciones,
+        key=lambda item: (
+            orden_riesgo.get(item["nivel_riesgo"], 4),
+            -item["demanda_estimada"]
+        )
+    )
+
+    productos_criticos = [
+        item for item in predicciones
+        if item["nivel_riesgo"] in ["ALTO", "MEDIO"]
+    ]
+
+    resumen = {
+        "productos_analizados": len(predicciones),
+        "productos_criticos": len(productos_criticos),
+        "demanda_total_estimada": sum(item["demanda_estimada"] for item in predicciones),
+        "fecha_generacion": hoy.strftime("%Y-%m-%d %H:%M:%S"),
+        "metodo": "Motor predictivo inicial basado en reglas, historial de ventas, stock disponible y tendencia reciente."
+    }
+
+    return {
+        "resumen": resumen,
+        "predicciones": predicciones
+    }
+
+
+@api_view(["GET"])
+def inteligencia_predictiva(request):
+    """
+    Endpoint principal de inteligencia artificial predictiva.
+    Devuelve demanda estimada, inventario crítico, tendencia y recomendación de reposición.
+    """
+    try:
+        data = _calcular_inteligencia_predictiva()
+        return Response(data)
+    except Exception as error:
+        return Response(
+            {
+                "error": "No se pudo generar la inteligencia predictiva.",
+                "detalle": str(error)
+            },
+            status=500
+        )

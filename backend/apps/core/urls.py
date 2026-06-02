@@ -1,4 +1,6 @@
+# backend/apps/core/urls.py
 from django.urls import path, include
+from . import views
 from rest_framework.routers import DefaultRouter
 from .views import (
     TiendaViewSet, DepartamentoViewSet, EmpleadoViewSet, RolViewSet,
@@ -55,4 +57,5 @@ urlpatterns = [
     path('odoo/pedidos/<int:pedido_id>/facturar/', facturar_pedido_odoo),
     path('stock/', stock_list),
     path('odoo/resumen/', odoo_resumen),
+    path("inteligencia-predictiva/", views.inteligencia_predictiva, name="inteligencia-predictiva"),
 ]

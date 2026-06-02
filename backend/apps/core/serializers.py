@@ -1,3 +1,4 @@
+# backend/apps/core/serializers.py
 from rest_framework import serializers
 from .models import (
     Tienda, Departamento, Empleado, Rol, Almacen, Usuario, Categoria, Producto,
@@ -31,9 +32,17 @@ class RolSerializer(serializers.ModelSerializer):
 
 
 class AlmacenSerializer(serializers.ModelSerializer):
+    tienda_nombre = serializers.CharField(source='tienda.nombre_tienda', read_only=True)
+
     class Meta:
         model = Almacen
-        fields = '__all__'
+        fields = [
+            'id',
+            'nombre_almacen',
+            'ubicacion',
+            'tienda',
+            'tienda_nombre',
+        ]
 
 
 class UsuarioSerializer(serializers.ModelSerializer):

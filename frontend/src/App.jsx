@@ -9,6 +9,8 @@ import Proveedores from './pages/Proveedores.jsx'
 import Repartidores from './pages/Repartidores.jsx'
 import ReportesDW from './pages/ReportesDW.jsx'
 import IntegracionOdoo from './pages/IntegracionOdoo.jsx'
+import InteligenciaPredictiva from './pages/InteligenciaPredictiva.jsx'
+import Almacenes from './pages/Almacenes.jsx'
 
 export default function App() {
   return (
@@ -25,6 +27,8 @@ export default function App() {
         <NavLink to="/repartidores">Repartidores</NavLink>
         <NavLink to="/reportes-dw">Reportes DW</NavLink>
         <NavLink to="/integracion-odoo">Integración Odoo</NavLink>
+        <NavLink to="/inteligencia-predictiva">Inteligencia Predictiva</NavLink>
+        <NavLink to="/almacenes">Almacenes</NavLink>
       </aside>
       <main className="content">
         <Routes>
@@ -38,6 +42,8 @@ export default function App() {
           <Route path="/repartidores" element={<Repartidores />} />
           <Route path="/reportes-dw" element={<ReportesDW />} />
           <Route path="/integracion-odoo" element={<IntegracionOdoo />} />
+          <Route path="/inteligencia-predictiva" element={<InteligenciaPredictiva />} />
+          <Route path="/almacenes" element={<Almacenes />} />
         </Routes>
       </main>
     </div>
