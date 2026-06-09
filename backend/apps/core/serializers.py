@@ -46,9 +46,30 @@ class AlmacenSerializer(serializers.ModelSerializer):
 
 
 class UsuarioSerializer(serializers.ModelSerializer):
+    rol_nombre = serializers.CharField(source='rol.nombre_rol', read_only=True)
+    almacen_nombre = serializers.CharField(source='almacen_asignado.nombre_almacen', read_only=True)
+    empleado_nombre = serializers.SerializerMethodField()
+
     class Meta:
         model = Usuario
-        fields = ['id', 'empleado', 'almacen_asignado', 'username', 'rol', 'ultimo_acceso', 'activo']
+        fields = [
+            'id',
+            'empleado',
+            'empleado_nombre',
+            'almacen_asignado',
+            'almacen_nombre',
+            'username',
+            'rol',
+            'rol_nombre',
+            'ultimo_acceso',
+            'activo',
+        ]
+
+    def get_empleado_nombre(self, obj):
+        if obj.empleado:
+            apellido = obj.empleado.apellido or ''
+            return f'{obj.empleado.nombre} {apellido}'.strip()
+        return ''
 
 
 class CategoriaSerializer(serializers.ModelSerializer):
@@ -195,11 +216,19 @@ class ProveedorSerializer(serializers.ModelSerializer):
 
 class OrdenCompraSerializer(serializers.ModelSerializer):
     proveedor_nombre = serializers.CharField(source='proveedor.nombre_proveedor', read_only=True)
+    almacen_nombre = serializers.CharField(source='almacen_destino.nombre_almacen', read_only=True)
 
     class Meta:
         model = OrdenCompra
-        fields = '__all__'
-
+        fields = [
+            'id',
+            'proveedor',
+            'proveedor_nombre',
+            'almacen_destino',
+            'almacen_nombre',
+            'fecha',
+            'total',
+        ]
 
 class DetalleCompraSerializer(serializers.ModelSerializer):
     producto_nombre = serializers.CharField(source='producto.nombre', read_only=True)
@@ -210,6 +239,19 @@ class DetalleCompraSerializer(serializers.ModelSerializer):
 
 
 class AuditoriaSerializer(serializers.ModelSerializer):
+    usuario_nombre = serializers.CharField(source='usuario.username', read_only=True)
+
     class Meta:
         model = Auditoria
-        fields = '__all__'
+        fields = [
+            'id',
+            'usuario',
+            'usuario_nombre',
+            'accion',
+            'tabla_afectada',
+            'registro_id',
+            'valor_anterior',
+            'valor_nuevo',
+            'ip_maquina',
+            'fecha',
+        ]

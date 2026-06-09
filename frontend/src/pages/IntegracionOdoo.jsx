@@ -1,213 +1,331 @@
 import { useEffect, useState } from 'react'
-import api from '../services/api'
+
+const ESTADO_URL = 'http://localhost:8000/api/odoo/estado/'
+const RESUMEN_URL = 'http://localhost:8000/api/odoo/resumen/'
+const PEDIDOS_URL = 'http://localhost:8000/api/pedidos/'
 
 export default function IntegracionOdoo() {
-  const [data, setData] = useState(null)
-  const [error, setError] = useState('')
-  const [cargando, setCargando] = useState(false)
+  const [estado, setEstado] = useState(null)
+  const [resumen, setResumen] = useState(null)
+  const [pedidos, setPedidos] = useState([])
+  const [loading, setLoading] = useState(true)
 
-  const cargarResumen = async () => {
-    setCargando(true)
-    setError('')
+  useEffect(() => {
+    cargarDatosOdoo()
+  }, [])
 
+  const cargarDatosOdoo = async () => {
     try {
-      const res = await api.get('/odoo/resumen/')
-      setData(res.data)
-    } catch (err) {
-      const detalle =
-        err.response?.data?.error ||
-        'No se pudo cargar el resumen de integración Odoo.'
-      setError(detalle)
+      setLoading(true)
+
+      const [estadoRes, resumenRes, pedidosRes] = await Promise.all([
+        fetch(ESTADO_URL),
+        fetch(RESUMEN_URL),
+        fetch(PEDIDOS_URL),
+      ])
+
+      if (!estadoRes.ok) throw new Error('Error al cargar estado de Odoo')
+      if (!resumenRes.ok) throw new Error('Error al cargar resumen de Odoo')
+      if (!pedidosRes.ok) throw new Error('Error al cargar pedidos')
+
+      const estadoData = await estadoRes.json()
+      const resumenData = await resumenRes.json()
+      const pedidosData = await pedidosRes.json()
+
+      setEstado(estadoData)
+      setResumen(resumenData)
+      setPedidos(pedidosData)
+    } catch (error) {
+      console.error(error)
+      alert('No se pudieron cargar los datos de integración con Odoo')
     } finally {
-      setCargando(false)
+      setLoading(false)
     }
   }
 
-  useEffect(() => {
-    cargarResumen()
-  }, [])
-
   const formatoMoneda = (valor) => {
-    const numero = Number(valor || 0)
-    return `Bs ${numero.toLocaleString('es-BO', {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    })}`
+    return Number(valor || 0).toLocaleString('es-BO', {
+      style: 'currency',
+      currency: 'BOB',
+    })
   }
 
-  const kpis = data?.kpis || {}
-  const logs = data?.ultimos_logs || []
-  const facturas = data?.ultimas_facturas || []
-  const version = data?.version_odoo || {}
+  const formatearFecha = (fecha) => {
+    if (!fecha) return 'Sin fecha'
+
+    return new Date(fecha).toLocaleString('es-BO', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    })
+  }
+
+  const facturarPedido = async (pedidoId) => {
+    const confirmar = confirm(`¿Deseas facturar el pedido ${pedidoId} en Odoo?`)
+
+    if (!confirmar) return
+
+    const usuario = JSON.parse(localStorage.getItem('usuario') || 'null')
+
+    try {
+      const response = await fetch(
+        `http://localhost:8000/api/odoo/pedidos/${pedidoId}/facturar/`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            usuario_id: usuario?.id,
+          }),
+        }
+      )
+
+      if (!response.ok) {
+        const errorData = await response.json()
+        console.error(errorData)
+        alert('No se pudo facturar el pedido en Odoo')
+        return
+      }
+
+      alert('Pedido facturado correctamente en Odoo')
+      await cargarDatosOdoo()
+    } catch (error) {
+      console.error(error)
+      alert('Error de conexión al facturar en Odoo')
+    }
+  }
+
+  if (loading) {
+    return <p>Cargando integración con Odoo...</p>
+  }
+
+  if (!estado || !resumen) {
+    return <p>No existen datos disponibles de integración con Odoo.</p>
+  }
+
+  const kpis = resumen.kpis || {}
+  const version = resumen.version_odoo || {}
+  const logs = resumen.ultimos_logs || []
+  const facturas = resumen.ultimas_facturas || []
 
   return (
-    <>
-      <div className="page-header">
-        <div>
-          <h1>Integración Odoo</h1>
-          <p>
-            Estado de conexión, sincronización de clientes/productos y facturación ERP.
-          </p>
+    <div>
+      <h1>Integración con Odoo</h1>
+
+      <p>
+        Este módulo permite verificar la conexión con Odoo, revisar la
+        sincronización de clientes y productos, y gestionar la facturación de
+        pedidos comerciales.
+      </p>
+
+      <div className="grid-cards">
+        <div className="card">
+          <h3>Estado de conexión</h3>
+          <p>{estado.conectado ? 'Conectado' : 'Desconectado'}</p>
         </div>
 
-        <button onClick={cargarResumen} disabled={cargando}>
-          {cargando ? 'Actualizando...' : 'Actualizar'}
-        </button>
+        <div className="card">
+          <h3>Versión Odoo</h3>
+          <p>{version.server_version || estado.version?.server_version}</p>
+        </div>
+
+        <div className="card">
+          <h3>Clientes sincronizados</h3>
+          <p>{kpis.clientes_sincronizados || 0}</p>
+        </div>
+
+        <div className="card">
+          <h3>Productos sincronizados</h3>
+          <p>{kpis.productos_sincronizados || 0}</p>
+        </div>
+
+        <div className="card">
+          <h3>Pedidos facturados</h3>
+          <p>{kpis.pedidos_facturados || 0}</p>
+        </div>
+
+        <div className="card">
+          <h3>Pendientes de factura</h3>
+          <p>{kpis.pedidos_pendientes_factura || 0}</p>
+        </div>
+
+        <div className="card">
+          <h3>Errores integración</h3>
+          <p>{kpis.errores_integracion || 0}</p>
+        </div>
+
+        <div className="card">
+          <h3>Productos activos Odoo</h3>
+          <p>{estado.productos_activos || 0}</p>
+        </div>
       </div>
 
-      {error && <div className="alert error">{error}</div>}
+      <section className="card">
+        <h2>Pedidos y facturación</h2>
 
-      {!data ? (
-        <div className="card">Cargando integración Odoo...</div>
-      ) : (
-        <>
-          <section className="card">
-            <h2>Estado de conexión</h2>
+        {pedidos.length === 0 ? (
+          <p>No existen pedidos registrados.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>ID Pedido</th>
+                <th>Cliente</th>
+                <th>Almacén</th>
+                <th>Total</th>
+                <th>Estado pedido</th>
+                <th>Factura Odoo</th>
+                <th>Estado factura</th>
+                <th>Acción</th>
+              </tr>
+            </thead>
 
-            <div className="odoo-status">
-              {kpis.odoo_conectado ? (
-                <span className="badge success-badge">Conectado a Odoo</span>
-              ) : (
-                <span className="badge warning">Sin conexión</span>
-              )}
-
-              <p>
-                <strong>Versión Odoo:</strong>{' '}
-                {version.server_version || 'No disponible'}
-              </p>
-            </div>
-          </section>
-
-          <section className="kpi-grid">
-            <div className="kpi-card">
-              <span>Contactos en Odoo</span>
-              <strong>{kpis.odoo_contactos_activos || 0}</strong>
-            </div>
-
-            <div className="kpi-card">
-              <span>Productos en Odoo</span>
-              <strong>{kpis.odoo_productos_activos || 0}</strong>
-            </div>
-
-            <div className="kpi-card">
-              <span>Clientes sincronizados</span>
-              <strong>{kpis.clientes_sincronizados || 0}</strong>
-            </div>
-
-            <div className="kpi-card">
-              <span>Productos sincronizados</span>
-              <strong>{kpis.productos_sincronizados || 0}</strong>
-            </div>
-
-            <div className="kpi-card">
-              <span>Pedidos facturados</span>
-              <strong>{kpis.pedidos_facturados || 0}</strong>
-            </div>
-
-            <div className="kpi-card">
-              <span>Pendientes de factura</span>
-              <strong>{kpis.pedidos_pendientes_factura || 0}</strong>
-            </div>
-          </section>
-
-          <section className="card">
-            <h2>Últimas facturas Odoo</h2>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>Pedido</th>
-                  <th>Cliente</th>
-                  <th>Total</th>
-                  <th>Factura Odoo</th>
-                  <th>Estado</th>
-                  <th>Fecha sync</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {facturas.length === 0 ? (
-                  <tr>
-                    <td colSpan="6">No hay facturas generadas en Odoo.</td>
-                  </tr>
-                ) : (
-                  facturas.map((factura) => (
-                    <tr key={factura.pedido_id}>
-                      <td>#{factura.pedido_id}</td>
-                      <td>{factura.cliente}</td>
-                      <td>{formatoMoneda(factura.total)}</td>
-                      <td>
+            <tbody>
+              {pedidos.map((pedido) => (
+                <tr key={pedido.id}>
+                  <td>{pedido.id}</td>
+                  <td>{pedido.cliente_nombre || pedido.cliente}</td>
+                  <td>{pedido.almacen_nombre || pedido.almacen_origen}</td>
+                  <td>{formatoMoneda(pedido.total)}</td>
+                  <td>{pedido.estado || 'Sin estado'}</td>
+                  <td>
+                    {pedido.odoo_invoice_name ? (
+                      pedido.odoo_invoice_url ? (
                         <a
-                          href={
-                            factura.odoo_invoice_url ||
-                            `http://localhost:8069/web#id=${factura.odoo_invoice_id}&model=account.move&view_type=form`
-                          }
+                          href={pedido.odoo_invoice_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="badge success-badge"
                         >
-                          {factura.odoo_invoice_name ||
-                            `Factura ${factura.odoo_invoice_id}`}
+                          {pedido.odoo_invoice_name}
                         </a>
-                      </td>
-                      <td>
-                        <span className="badge">
-                          {factura.estado_factura_odoo}
-                        </span>
-                      </td>
-                      <td>{factura.fecha_sync || 'Sin fecha'}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </section>
-
-          <section className="card">
-            <h2>Últimos logs de integración</h2>
-
-            <table>
-              <thead>
-                <tr>
-                  <th>ID</th>
-                  <th>Operación</th>
-                  <th>Entidad</th>
-                  <th>Registro</th>
-                  <th>Estado</th>
-                  <th>Mensaje</th>
-                  <th>Fecha</th>
+                      ) : (
+                        pedido.odoo_invoice_name
+                      )
+                    ) : (
+                      'Sin factura'
+                    )}
+                  </td>
+                  <td>{pedido.estado_factura_odoo || 'Pendiente'}</td>
+                  <td>
+                    {pedido.odoo_invoice_id ? (
+                      <span className="badge success">Facturado</span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => facturarPedido(pedido.id)}
+                      >
+                        Facturar en Odoo
+                      </button>
+                    )}
+                  </td>
                 </tr>
-              </thead>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
 
-              <tbody>
-                {logs.length === 0 ? (
-                  <tr>
-                    <td colSpan="7">No hay logs de integración.</td>
-                  </tr>
-                ) : (
-                  logs.map((log) => (
-                    <tr key={log.id}>
-                      <td>{log.id}</td>
-                      <td>{log.tipo_operacion}</td>
-                      <td>{log.entidad}</td>
-                      <td>{log.registro_id}</td>
-                      <td>
-                        {log.estado === 'OK' ? (
-                          <span className="badge success-badge">OK</span>
-                        ) : (
-                          <span className="badge warning">ERROR</span>
-                        )}
-                      </td>
-                      <td>{log.mensaje}</td>
-                      <td>{log.fecha}</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </section>
-        </>
-      )}
-    </>
+      <section className="card">
+        <h2>Últimas facturas generadas</h2>
+
+        {facturas.length === 0 ? (
+          <p>No existen facturas registradas desde Odoo.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>Pedido</th>
+                <th>Cliente</th>
+                <th>Total</th>
+                <th>Factura</th>
+                <th>Estado</th>
+                <th>Fecha sync</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {facturas.map((factura) => (
+                <tr key={factura.pedido_id}>
+                  <td>{factura.pedido_id}</td>
+                  <td>{factura.cliente}</td>
+                  <td>{formatoMoneda(factura.total)}</td>
+                  <td>
+                    {factura.odoo_invoice_url ? (
+                      <a
+                        href={factura.odoo_invoice_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {factura.odoo_invoice_name}
+                      </a>
+                    ) : (
+                      factura.odoo_invoice_name
+                    )}
+                  </td>
+                  <td>{factura.estado_factura_odoo}</td>
+                  <td>{factura.fecha_sync}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Últimos logs de integración</h2>
+
+        {logs.length === 0 ? (
+          <p>No existen logs de integración.</p>
+        ) : (
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Operación</th>
+                <th>Entidad</th>
+                <th>Registro</th>
+                <th>Estado</th>
+                <th>Mensaje</th>
+                <th>Fecha</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {logs.map((log) => (
+                <tr key={log.id}>
+                  <td>{log.id}</td>
+                  <td>{log.tipo_operacion}</td>
+                  <td>{log.entidad}</td>
+                  <td>{log.registro_id}</td>
+                  <td>
+                    <span
+                      className={
+                        log.estado === 'OK'
+                          ? 'badge success'
+                          : 'badge danger'
+                      }
+                    >
+                      {log.estado}
+                    </span>
+                  </td>
+                  <td>{log.mensaje}</td>
+                  <td>{log.fecha}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="card">
+        <h2>Interpretación del módulo</h2>
+        <p>
+          La integración con Odoo permite vincular la gestión comercial del CRM
+          con la facturación empresarial. De esta manera, cada pedido puede
+          relacionarse con una factura, conservando el identificador, referencia,
+          estado y enlace de consulta generado por Odoo.
+        </p>
+      </section>
+    </div>
   )
 }

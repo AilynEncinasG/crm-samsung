@@ -11,7 +11,7 @@ from .views import (
     health, dashboard, dashboard_dw, registrar_venta, registrar_compra, reactivar_cliente, reactivar_producto, reactivar_proveedor, reactivar_repartidor,
     actualizar_estado_pedido, detalle_pedido_completo, odoo_estado,
     sincronizar_cliente_odoo, sincronizar_clientes_odoo, sincronizar_producto_odoo, sincronizar_productos_odoo, facturar_pedido_odoo, stock_list,
-    odoo_resumen
+    odoo_resumen, login_usuario, asistente_cmi_ia
 )
 
 router = DefaultRouter()
@@ -58,4 +58,6 @@ urlpatterns = [
     path('stock/', stock_list),
     path('odoo/resumen/', odoo_resumen),
     path("inteligencia-predictiva/", views.inteligencia_predictiva, name="inteligencia-predictiva"),
+    path('login/', login_usuario),
+    path('cmi/asistente-ia/', asistente_cmi_ia),
 ]

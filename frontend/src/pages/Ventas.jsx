@@ -1,3 +1,4 @@
+//frontend/src/pages/Ventas.jsx
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 
@@ -11,10 +12,12 @@ export default function Ventas() {
   const [pedidoDetalle, setPedidoDetalle] = useState(null)
   const [mostrandoDetalle, setMostrandoDetalle] = useState(false)
 
+  const usuario = JSON.parse(localStorage.getItem('usuario') || 'null')
+
   const [form, setForm] = useState({
     cliente_id: '',
     producto_id: '',
-    almacen_id: '',
+    almacen_id: usuario?.almacen_asignado || '',
     repartidor_id: '',
     cantidad: 1,
     metodo_envio: 'Delivery',
@@ -74,21 +77,63 @@ export default function Ventas() {
       String(s.almacen) === String(form.almacen_id)
   )
 
+  const precioUnitario = productoSeleccionado
+  ? Number(productoSeleccionado.precio_venta_sugerido)
+  : 0
+
+  const cantidadSolicitada = Number(form.cantidad || 0)
+
+  const totalEstimado = precioUnitario * cantidadSolicitada
+
+  const stockDisponible = stockSeleccionado
+    ? Number(stockSeleccionado.stock_total || 0)
+    : 0
+
+  const stockInsuficiente =
+    form.producto_id &&
+    form.almacen_id &&
+    cantidadSolicitada > stockDisponible
+
+  const productoSinStockEnAlmacen =
+    form.producto_id && form.almacen_id && !stockSeleccionado
+
   const registrarVenta = async (e) => {
     e.preventDefault()
     setMensaje('')
     setError('')
     setCargando(true)
 
+    if (!stockSeleccionado) {
+      setError('El producto seleccionado no tiene stock registrado en este almacén.')
+      setCargando(false)
+      return
+    }
+
+    if (Number(form.cantidad) > Number(stockSeleccionado.stock_total)) {
+      setError(
+        `Stock insuficiente. Disponible: ${stockSeleccionado.stock_total}, solicitado: ${form.cantidad}.`
+      )
+      setCargando(false)
+      return
+    }
+
     try {
+      const usuario = JSON.parse(localStorage.getItem('usuario') || 'null')
+
+      if (!usuario) {
+        setError('No existe una sesión activa. Inicia sesión nuevamente.')
+        setCargando(false)
+        return
+      }
+
       const payload = {
         cliente_id: Number(form.cliente_id),
-        empleado_id: 1,
+        empleado_id: Number(usuario.empleado),
         almacen_id: Number(form.almacen_id),
         repartidor_id: Number(form.repartidor_id),
         producto_id: Number(form.producto_id),
         cantidad: Number(form.cantidad),
-        usuario_id: 1,
+        usuario_id: Number(usuario.id),
         metodo_envio: form.metodo_envio,
         satisfaccion_cliente: Number(form.satisfaccion_cliente),
       }
@@ -290,18 +335,42 @@ export default function Ventas() {
 
           <div className="venta-resumen">
             <p>
-              <strong>Precio:</strong>{' '}
+              <strong>Precio unitario:</strong>{' '}
               {productoSeleccionado
                 ? `Bs ${productoSeleccionado.precio_venta_sugerido}`
                 : 'Seleccione producto'}
             </p>
+
             <p>
               <strong>Stock disponible:</strong>{' '}
-              {stockSeleccionado ? stockSeleccionado.stock_total : 'Sin selección'}
+              {stockSeleccionado
+                ? stockSeleccionado.stock_total
+                : form.producto_id && form.almacen_id
+                  ? 'Sin stock en este almacén'
+                  : 'Seleccione producto y almacén'}
             </p>
+
+            <p>
+              <strong>Total estimado:</strong> Bs {totalEstimado.toFixed(2)}
+            </p>
+
+            {productoSinStockEnAlmacen && (
+              <p className="text-danger">
+                Este producto no tiene stock registrado en el almacén seleccionado.
+              </p>
+            )}
+
+            {stockInsuficiente && (
+              <p className="text-danger">
+                Stock insuficiente para registrar esta venta.
+              </p>
+            )}
           </div>
 
-          <button type="submit" disabled={cargando}>
+          <button
+            type="submit"
+            disabled={cargando || stockInsuficiente || productoSinStockEnAlmacen}
+          >
             {cargando ? 'Registrando...' : 'Registrar venta'}
           </button>
         </form>

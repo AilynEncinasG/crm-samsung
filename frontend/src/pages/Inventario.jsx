@@ -1,9 +1,13 @@
+//frontend/src/pages/Inventario.jsx
 import { useEffect, useState } from 'react'
 import api from '../services/api'
 
 export default function Inventario() {
   const [stock, setStock] = useState([])
   const [movimientos, setMovimientos] = useState([])
+  const [lotes, setLotes] = useState([])
+  const [productos, setProductos] = useState([])
+  const [almacenes, setAlmacenes] = useState([])
   const [error, setError] = useState('')
   const [cargando, setCargando] = useState(true)
 
@@ -14,14 +18,27 @@ export default function Inventario() {
     setError('')
 
     try {
-      const [stockRes, movimientosRes] = await Promise.all([
+      const [
+        stockRes,
+        movimientosRes,
+        lotesRes,
+        productosRes,
+        almacenesRes,
+      ] = await Promise.all([
         api.get('/stock/'),
         api.get('/movimientos-inventario/'),
+        api.get('/lotes/'),
+        api.get('/productos/'),
+        api.get('/almacenes/'),
       ])
 
       setStock(normalizar(stockRes.data))
       setMovimientos(normalizar(movimientosRes.data))
+      setLotes(normalizar(lotesRes.data))
+      setProductos(normalizar(productosRes.data))
+      setAlmacenes(normalizar(almacenesRes.data))
     } catch (err) {
+      console.error(err)
       setError('No se pudo cargar el inventario.')
     } finally {
       setCargando(false)
@@ -32,41 +49,72 @@ export default function Inventario() {
     cargarInventario()
   }, [])
 
+  const buscarProducto = (id) => {
+    const producto = productos.find((item) => String(item.id) === String(id))
+    return producto ? producto.nombre : `Producto #${id}`
+  }
+
+  const buscarAlmacen = (id) => {
+    const almacen = almacenes.find((item) => String(item.id) === String(id))
+    return almacen ? almacen.nombre_almacen : `Almacén #${id}`
+  }
+
+  const formatearFecha = (fecha) => {
+    if (!fecha) return 'Sin fecha'
+
+    return new Date(fecha).toLocaleString('es-BO', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    })
+  }
+
+  const obtenerEstadoStock = (cantidad) => {
+    if (cantidad <= 5) return 'Crítico'
+    if (cantidad <= 10) return 'Bajo'
+    return 'Disponible'
+  }
+
+  const obtenerClaseStock = (cantidad) => {
+    if (cantidad <= 5) return 'badge danger'
+    if (cantidad <= 10) return 'badge warning'
+    return 'badge success'
+  }
+
   const stockTotal = stock.reduce(
-    (total, item) => total + Number(item.stock_total || item.stockTotal || 0),
+    (total, item) => total + Number(item.stock_total || 0),
     0
   )
 
-  const productosStockBajo = stock.filter(
-    (item) => Number(item.stock_total || item.stockTotal || 0) <= 5
+  const productosStockCritico = stock.filter(
+    (item) => Number(item.stock_total || 0) <= 5
   )
 
+  const productosStockBajo = stock.filter((item) => {
+    const cantidad = Number(item.stock_total || 0)
+    return cantidad > 5 && cantidad <= 10
+  })
+
   const entradas = movimientos.filter((m) =>
-    String(m.tipo_movimiento || m.tipoMovimiento || '').includes('ENTRADA')
+    String(m.tipo_movimiento || '').includes('ENTRADA')
   )
 
   const salidas = movimientos.filter((m) =>
-    String(m.tipo_movimiento || m.tipoMovimiento || '').includes('SALIDA')
+    String(m.tipo_movimiento || '').includes('SALIDA')
   )
 
-  const nombreProducto = (item) =>
-    item.producto_nombre ||
-    item.nombre_producto ||
-    item.producto ||
-    `Producto #${item.producto_id || ''}`
-
-  const nombreAlmacen = (item) =>
-    item.almacen_nombre ||
-    item.nombre_almacen ||
-    item.almacen ||
-    `Almacén #${item.almacen_id || ''}`
+  const lotesCriticos = lotes.filter(
+    (lote) => Number(lote.cantidad_actual || 0) <= 5
+  )
 
   return (
     <>
       <div className="page-header">
         <div>
           <h1>Inventario</h1>
-          <p>Control de stock, almacenes y movimientos de productos.</p>
+          <p>
+            Control de stock por almacén, lotes y movimientos de entrada o
+            salida de productos.
+          </p>
         </div>
 
         <button onClick={cargarInventario}>Actualizar</button>
@@ -85,17 +133,27 @@ export default function Inventario() {
             </div>
 
             <div className="kpi-card">
-              <span>Productos en stock bajo</span>
+              <span>Stock crítico</span>
+              <strong>{productosStockCritico.length}</strong>
+            </div>
+
+            <div className="kpi-card">
+              <span>Stock bajo</span>
               <strong>{productosStockBajo.length}</strong>
             </div>
 
             <div className="kpi-card">
-              <span>Entradas registradas</span>
+              <span>Lotes registrados</span>
+              <strong>{lotes.length}</strong>
+            </div>
+
+            <div className="kpi-card">
+              <span>Entradas</span>
               <strong>{entradas.length}</strong>
             </div>
 
             <div className="kpi-card">
-              <span>Salidas registradas</span>
+              <span>Salidas</span>
               <strong>{salidas.length}</strong>
             </div>
           </section>
@@ -112,6 +170,7 @@ export default function Inventario() {
                   <th>Estado</th>
                 </tr>
               </thead>
+
               <tbody>
                 {stock.length === 0 ? (
                   <tr>
@@ -119,19 +178,65 @@ export default function Inventario() {
                   </tr>
                 ) : (
                   stock.map((item, index) => {
-                    const cantidad = Number(item.stock_total || item.stockTotal || 0)
+                    const cantidad = Number(item.stock_total || 0)
 
                     return (
-                      <tr key={index}>
-                        <td>{nombreProducto(item)}</td>
-                        <td>{nombreAlmacen(item)}</td>
+                      <tr key={`${item.almacen}-${item.producto}-${index}`}>
+                        <td>{item.producto_nombre || buscarProducto(item.producto)}</td>
+                        <td>{item.almacen_nombre || buscarAlmacen(item.almacen)}</td>
                         <td>{cantidad}</td>
                         <td>
-                          {cantidad <= 5 ? (
-                            <span className="badge warning">Stock bajo</span>
-                          ) : (
-                            <span className="badge success-badge">Disponible</span>
-                          )}
+                          <span className={obtenerClaseStock(cantidad)}>
+                            {obtenerEstadoStock(cantidad)}
+                          </span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="card">
+            <h2>Lotes de productos</h2>
+
+            <table>
+              <thead>
+                <tr>
+                  <th>ID Lote</th>
+                  <th>Producto</th>
+                  <th>Almacén</th>
+                  <th>Cantidad inicial</th>
+                  <th>Cantidad actual</th>
+                  <th>Costo compra</th>
+                  <th>Fecha ingreso</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {lotes.length === 0 ? (
+                  <tr>
+                    <td colSpan="8">No hay lotes registrados.</td>
+                  </tr>
+                ) : (
+                  lotes.map((lote) => {
+                    const cantidadActual = Number(lote.cantidad_actual || 0)
+
+                    return (
+                      <tr key={lote.id}>
+                        <td>{lote.id}</td>
+                        <td>{buscarProducto(lote.producto)}</td>
+                        <td>{buscarAlmacen(lote.almacen)}</td>
+                        <td>{lote.cantidad_inicial}</td>
+                        <td>{lote.cantidad_actual}</td>
+                        <td>Bs {Number(lote.costo_compra || 0).toFixed(2)}</td>
+                        <td>{formatearFecha(lote.fecha_ingreso)}</td>
+                        <td>
+                          <span className={obtenerClaseStock(cantidadActual)}>
+                            {obtenerEstadoStock(cantidadActual)}
+                          </span>
                         </td>
                       </tr>
                     )
@@ -150,44 +255,58 @@ export default function Inventario() {
                   <th>ID</th>
                   <th>Producto</th>
                   <th>Almacén</th>
+                  <th>Lote</th>
                   <th>Tipo</th>
                   <th>Cantidad</th>
                   <th>Fecha</th>
+                  <th>Usuario</th>
                 </tr>
               </thead>
+
               <tbody>
                 {movimientos.length === 0 ? (
                   <tr>
-                    <td colSpan="6">No hay movimientos registrados.</td>
+                    <td colSpan="8">No hay movimientos registrados.</td>
                   </tr>
                 ) : (
                   movimientos.map((mov) => {
-                    const tipo = mov.tipo_movimiento || mov.tipoMovimiento || ''
+                    const tipo = mov.tipo_movimiento || ''
+                    const esEntrada = String(tipo).includes('ENTRADA')
 
                     return (
                       <tr key={mov.id}>
                         <td>{mov.id}</td>
-                        <td>{nombreProducto(mov)}</td>
-                        <td>{nombreAlmacen(mov)}</td>
+                        <td>{buscarProducto(mov.producto)}</td>
+                        <td>{buscarAlmacen(mov.almacen)}</td>
+                        <td>{mov.lote || '-'}</td>
                         <td>
-                          <span
-                            className={
-                              String(tipo).includes('ENTRADA')
-                                ? 'badge success-badge'
-                                : 'badge warning'
-                            }
-                          >
+                          <span className={esEntrada ? 'badge success' : 'badge warning'}>
                             {tipo}
                           </span>
                         </td>
                         <td>{mov.cantidad}</td>
-                        <td>{mov.fecha}</td>
+                        <td>{formatearFecha(mov.fecha)}</td>
+                        <td>{mov.usuario || 'Sistema'}</td>
                       </tr>
                     )
                   })
                 )}
               </tbody>
             </table>
+          </section>
+
+          <section className="card">
+            <h2>Interpretación del inventario</h2>
+            <p>
+              El inventario permite controlar la disponibilidad real de productos
+              por almacén, revisar lotes disponibles y analizar movimientos de
+              entrada y salida. Los productos o lotes con cantidades bajas se
+              consideran críticos para apoyar decisiones de reposición.
+            </p>
+
+            <p>
+              Lotes en estado crítico: <strong>{lotesCriticos.length}</strong>
+            </p>
           </section>
         </>
       )}
